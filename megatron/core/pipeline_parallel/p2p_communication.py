@@ -1,4 +1,5 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 
 from typing import List, Optional, Tuple, Union

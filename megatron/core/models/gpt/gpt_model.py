@@ -1,4 +1,5 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 from collections import OrderedDict
 from typing import Dict, Literal, Optional

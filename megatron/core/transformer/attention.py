@@ -1,4 +1,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime), implementing gated attention.
+# Includes Apache 2.0-licensed contributions adapted from Alibaba's Pai-Megatron-Patch (https://github.com/alibaba/Pai-Megatron-Patch), namely get_query_gate_key_value_tensors, implementing gated attention.
+# Includes Apache 2.0-licensed contributions from Anlatan Inc, reconciling gated attention to work with newer v0.15.0 Megatron code.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -1174,7 +1177,9 @@ class SelfAttention(Attention):
 
         return query, key, value
 
-    # adapt from https://github.com/alibaba/Pai-Megatron-Patch/blob/8e6cbb0556ba09933ab4a4edb23c0af1d19d9960/megatron_patch/model/qwen3_next/gated_attention.py#L192
+    # adapted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8e6cbb0556ba09933ab4a4edb23c0af1d19d9960/megatron_patch/model/qwen3_next/gated_attention.py#L192
+    # under Apache 2.0 License from Alibaba:
+    # https://github.com/alibaba/Pai-Megatron-Patch/blob/8e6cbb0556ba09933ab4a4edb23c0af1d19d9960/LICENSE
     def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
         """
         Derives `query`, `key` and `value` tensors from `hidden_states`.
