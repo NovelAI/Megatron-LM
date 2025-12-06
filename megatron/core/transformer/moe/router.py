@@ -1,4 +1,5 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -200,6 +201,9 @@ class TopKRouter(Router):
         else:
             self.global_tokens_per_expert = None
             self.ga_steps = None
+
+        from slime.utils.routing_replay import register_routing_replay
+        register_routing_replay(self)
 
     def _maintain_float32_expert_bias(self):
         """

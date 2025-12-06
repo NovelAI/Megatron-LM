@@ -1,4 +1,5 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 """Model and data parallel groups."""
 
@@ -10,6 +11,7 @@ from typing import Callable, List, Optional
 
 import numpy as np
 import torch
+import torch.distributed as dist
 
 from .utils import GlobalMemoryBuffer, is_torch_min_version
 

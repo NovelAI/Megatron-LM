@@ -1,4 +1,5 @@
 # Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 import warnings
 from dataclasses import dataclass
@@ -191,6 +192,10 @@ class TransformerConfig(ModelParallelConfig):
 
     qk_layernorm: bool = False
     """Whether to apply `normalization` type of normalization to the query and key embeddings."""
+
+    post_self_attn_layernorm: bool = False
+    post_mlp_layernorm: bool = False
+    use_gated_attention: bool = False
 
     test_mode: bool = False
     """Whether to run real-time tests."""

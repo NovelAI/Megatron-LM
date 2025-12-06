@@ -1,4 +1,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime), implementing gated attention.
+# Includes Apache 2.0-licensed contributions adapted from Alibaba's Pai-Megatron-Patch (https://github.com/alibaba/Pai-Megatron-Patch), namely get_query_gate_key_value_tensors, implementing gated attention.
+# Includes Apache 2.0-licensed contributions from Anlatan Inc, reconciling gated attention to work with newer v0.15.0 Megatron code.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -485,6 +488,10 @@ class Attention(MegatronModule, ABC):
         is "self-attn" or "cross-attn".
         """
 
+    @abstractmethod
+    def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
+        ...
+
     def flash_decode(
         self,
         sequence_len_offset: Tensor,
@@ -770,15 +777,18 @@ class Attention(MegatronModule, ABC):
                 self.config.fused_single_qkv_rope and split_qkv
             ), "fused_single_qkv_rope requested but not available/supported for the config."
 
-        qkv_output = self.get_query_key_value_tensors(
-            hidden_states, key_value_states, split_qkv=split_qkv
-        )
         attn_mask_type = self.attn_mask_type
         block_table = None
-        if split_qkv:
-            query, key, value = qkv_output
+        if self.config.use_gated_attention:
+            query, gate, key, value = self.get_query_gate_key_value_tensors(hidden_states, key_value_states)
         else:
-            mixed_qkv, qkv_split_arg_list = qkv_output
+            qkv_output = self.get_query_key_value_tensors(
+                hidden_states, key_value_states, split_qkv=split_qkv
+            )
+            if split_qkv:
+                query, key, value = qkv_output
+            else:
+                mixed_qkv, qkv_split_arg_list = qkv_output
         nvtx_range_pop(suffix="qkv")
 
         # ===================================================
@@ -961,6 +971,11 @@ class Attention(MegatronModule, ABC):
         # Output. [sq, b, h]
         # =================
 
+        if self.config.use_gated_attention:
+            nvtx_range_push(suffix="sigmoid_gate")
+            core_attn_out = core_attn_out * torch.sigmoid(gate)
+            nvtx_range_pop(suffix="sigmoid_gate")
+
         nvtx_range_push(suffix="linear_proj")
         output, bias = self.linear_proj(core_attn_out)
         nvtx_range_pop(suffix="linear_proj")
@@ -998,10 +1013,11 @@ class SelfAttention(Attention):
             pg_collection=pg_collection,
         )
 
-        self.linear_qkv = build_module(
+        proj_out_size = self.query_projection_size * (2 if self.config.use_gated_attention else 1) + 2 * self.kv_projection_size
+        proj = build_module(
             submodules.linear_qkv,
             self.config.hidden_size,
-            self.query_projection_size + 2 * self.kv_projection_size,
+            proj_out_size,
             config=self.config,
             init_method=self.config.init_method,
             gather_output=False,
@@ -1011,6 +1027,7 @@ class SelfAttention(Attention):
             tp_comm_buffer_name='qkv',
             tp_group=self.pg_collection.tp,
         )
+        setattr(self, "linear_qgkv" if self.config.use_gated_attention else "linear_qkv", proj)
 
         if submodules.q_layernorm is not None:
             self.q_layernorm = build_module(
@@ -1160,6 +1177,67 @@ class SelfAttention(Attention):
 
         return query, key, value
 
+    # adapted from https://github.com/alibaba/Pai-Megatron-Patch/blob/8e6cbb0556ba09933ab4a4edb23c0af1d19d9960/megatron_patch/model/qwen3_next/gated_attention.py#L192
+    # under Apache 2.0 License from Alibaba:
+    # https://github.com/alibaba/Pai-Megatron-Patch/blob/8e6cbb0556ba09933ab4a4edb23c0af1d19d9960/LICENSE
+    def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
+        """
+        Derives `query`, `key` and `value` tensors from `hidden_states`.
+        """
+        # Attention heads [sq, b, h] --> [sq, b, ng * 2 * (np/ng + 1) * hn)]
+        mixed_qgkv, _ = self.linear_qgkv(hidden_states)
+
+        # [sq, b, hp] --> [sq, b, ng, 2 * (np/ng + 1) * hn]
+        new_tensor_shape = mixed_qgkv.size()[:-1] + (
+            self.num_query_groups_per_partition,
+            (
+                2 * (self.num_attention_heads_per_partition // self.num_query_groups_per_partition + 1)
+                * self.hidden_size_per_attention_head
+            ),
+        )
+        mixed_qgkv = mixed_qgkv.view(*new_tensor_shape)
+
+        split_arg_list = [
+            (
+                self.num_attention_heads_per_partition
+                // self.num_query_groups_per_partition
+                * self.hidden_size_per_attention_head
+            ),
+            (
+                self.num_attention_heads_per_partition
+                // self.num_query_groups_per_partition
+                * self.hidden_size_per_attention_head
+            ),
+            self.hidden_size_per_attention_head,
+            self.hidden_size_per_attention_head,
+        ]
+
+        if SplitAlongDim is not None:
+
+            # [sq, b, ng, (np/ng + 2) * hn]
+            # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+            (query, gate, key, value) = SplitAlongDim(mixed_qgkv, 3, split_arg_list)
+        else:
+
+            # [sq, b, ng, (np/ng + 2) * hn]
+            # --> [sq, b, ng, np/ng * hn], [sq, b, ng, hn], [sq, b, ng, hn]
+            (query, gate, key, value) = torch.split(mixed_qgkv, split_arg_list, dim=3)
+
+        # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
+        query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
+        gate = gate.reshape(query.size(0), query.size(1), -1)
+
+        if self.q_layernorm is not None:
+            query = self.q_layernorm(query)
+
+        if self.k_layernorm is not None:
+            key = self.k_layernorm(key)
+
+        if self.config.test_mode:
+            self.run_realtime_tests()
+
+        return query, gate, key, value
+
     def backward_dw(self) -> NoReturn:
         """Execute weight update operations"""
         self._backward_qkv_proj()
@@ -1264,3 +1342,6 @@ class CrossAttention(Attention):
         query = query.view(*new_tensor_shape)
 
         return query, key, value
+    
+    def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
+        raise NotImplementedError("gated cross-attention not implemented")

@@ -1,4 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 import dataclasses
 import inspect
@@ -408,6 +409,7 @@ class TELinear(te.pytorch.Linear):
         )
 
         for param in self.parameters():
+            setattr(param, "parallel_mode", parallel_mode)
             if is_expert:
                 # Reduce the gradient on the expert_data_parallel group for expert linear layers
                 setattr(param, "allreduce", not self.expert_parallel)

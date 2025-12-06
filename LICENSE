@@ -27,6 +27,12 @@ The following applies to all files unless otherwise noted:
 
 --
 
+This repository also contains Apache 2.0 Licensed code from Zhipu AI, Alibaba
+and Anlatan Inc. Files from these organizations have notices at the top of each file.
+An Apache 2.0 License is disclosed below.
+
+--
+
 This repository also contains code from Hugging Face Inc., Google Research,
 Facebook (from their Fairseq, Dino, and ParlAI projects), Microsoft (from their
 Swin-Transformer project), Philip Popien, the Mamba project (Tri Dao and

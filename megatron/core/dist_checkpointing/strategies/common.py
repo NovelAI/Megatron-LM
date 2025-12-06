@@ -1,4 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 """ Common strategies. """
 
@@ -86,7 +87,7 @@ class TorchCommonLoadStrategy(LoadCommonStrategy):
                 msc = MultiStorageClientFeature.import_package()
                 return msc.torch.load(load_path, map_location='cpu')
             else:
-                return torch.load(load_path, map_location='cpu')
+                return torch.load(load_path, map_location='cpu', weights_only=False)
         except FileNotFoundError as e:
             err_msg = f'Common file {load_path} does not exist'
             if MultiStorageClientFeature.is_enabled():

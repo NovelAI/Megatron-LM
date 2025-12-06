@@ -1,4 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Includes Apache 2.0-licensed contributions from Zhipu AI (at https://github.com/THUDM/slime)
 
 try:
     from packaging.version import Version
@@ -11,3 +12,15 @@ from .finalize_model_grads import finalize_model_grads
 from .fsdp.mcore_fsdp_adapter import FullyShardedDataParallel
 from .torch_fully_sharded_data_parallel import TorchFullyShardedDataParallel
 from .torch_fully_sharded_data_parallel_config import TorchFullyShardedDataParallelConfig
+
+# Backward compatibility patch for FSDP module reorganization
+import sys
+import importlib.util
+
+spec = importlib.util.find_spec('megatron.core.distributed.fsdp.src.megatron_fsdp')
+if spec:
+    custom_fsdp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(custom_fsdp)
+    sys.modules['megatron.core.distributed.custom_fsdp'] = custom_fsdp
+    if hasattr(custom_fsdp, 'MegatronFSDP'):
+        custom_fsdp.FullyShardedDataParallel = custom_fsdp.MegatronFSDP
