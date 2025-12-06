@@ -485,6 +485,10 @@ class Attention(MegatronModule, ABC):
         is "self-attn" or "cross-attn".
         """
 
+    @abstractmethod
+    def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
+        ...
+
     def flash_decode(
         self,
         sequence_len_offset: Tensor,
@@ -1333,3 +1337,6 @@ class CrossAttention(Attention):
         query = query.view(*new_tensor_shape)
 
         return query, key, value
+    
+    def get_query_gate_key_value_tensors(self, hidden_states, key_value_states=None):
+        raise NotImplementedError("gated cross-attention not implemented")
