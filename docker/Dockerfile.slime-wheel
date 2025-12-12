@@ -1,0 +1,37 @@
+# default defined just to satisfy buildx linter
+ARG BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64
+FROM ${BASE_IMAGE} AS base
+ARG PY3_VER
+ENV PY=/opt/python/cp3${PY3_VER}-cp3${PY3_VER}/bin/python
+RUN ${PY} -m pip install --upgrade "setuptools>=80.0.0" build
+COPY --link . /megatron-lm
+
+FROM base AS megatron-core
+WORKDIR /megatron-lm
+RUN ${PY} -m build
+
+FROM base AS megatron-fsdp
+WORKDIR /megatron-lm/megatron/core/distributed/fsdp/src
+RUN ${PY} -m build
+
+# we need a base with `auditwheel`
+FROM ${BASE_IMAGE} AS wheels
+ENV WHEEL_OUT=/wheels
+COPY --link --from=megatron-core /megatron-lm/dist/*.whl $WHEEL_OUT/
+COPY --link --from=megatron-fsdp /megatron-lm/megatron/core/distributed/fsdp/src/dist/*.whl $WHEEL_OUT/
+RUN <<EOF
+echo "Wheels found (before auditwheel):"
+printf '%s\n' "$WHEEL_OUT/"*.whl
+
+PLATFORM_WHEELS=$(find "$WHEEL_OUT" -name "*.whl" -not -name "*-none-any.whl")
+if [ -n "$PLATFORM_WHEELS" ]; then
+    echo "Found platform wheels to repair: $PLATFORM_WHEELS"
+    # Repair directly into target directory (creates temp wheelhouse first)
+    auditwheel repair --wheel-dir="$WHEEL_OUT" $PLATFORM_WHEELS
+    # Delete the unrepaired originals
+    rm -f $PLATFORM_WHEELS
+fi
+
+echo "Wheels found (after auditwheel):"
+printf '%s\n' "$WHEEL_OUT/"*.whl
+EOF
