@@ -1103,7 +1103,7 @@ def get_optimizer_param_scheduler(optimizer):
     return opt_param_scheduler
 
 
-def get_megatron_optimizer_config(args: Any) -> OptimizerConfig:
+def get_megatron_optimizer_config(args: Any) -> tuple[OptimizerConfig, dict[ParamKey, Any]]:
     """Return a Megatron optimizer config object from Megatron's arguments."""
 
     config = None
